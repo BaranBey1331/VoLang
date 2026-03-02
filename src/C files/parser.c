@@ -1,8 +1,7 @@
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
-
-#define MAX_FUNCTION_ARGS 64
+#include <string.h>
 
 static void next_token(Parser* parser) {
     parser->current_token = parser->peek_token;
@@ -42,6 +41,7 @@ static AstNode* parse_statement(Parser* parser);
 static AstNode* parse_identifier(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_IDENTIFIER;
+    node->data_type = VO_TYPE_UNKNOWN;
     node->data.ident.token = parser->current_token;
     node->data.ident.value = parser->current_token.literal;
     node->data.ident.length = parser->current_token.length;
@@ -51,6 +51,7 @@ static AstNode* parse_identifier(Parser* parser) {
 static AstNode* parse_integer_literal(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_INTEGER_LITERAL;
+    node->data_type = VO_TYPE_I64;
     node->data.int_literal.token = parser->current_token;
     
     char buffer[32] = {0};
@@ -64,34 +65,47 @@ static AstNode* parse_integer_literal(Parser* parser) {
 static AstNode* parse_function_call(Parser* parser, AstNode* function_ident) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_FUNCTION_CALL;
+    node->data_type = VO_TYPE_UNKNOWN;
     node->data.function_call.token = parser->current_token; // '('
     node->data.function_call.function_name = &function_ident->data.ident;
     
-    // Allocate space safely
-    node->data.function_call.arguments = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * MAX_FUNCTION_ARGS);
-    node->data.function_call.arg_count = 0;
+    // Dynamic array logic to remove fixed limits safely
+    size_t temp_cap = 8;
+    size_t temp_count = 0;
+    AstNode** temp_args = (AstNode**)malloc(temp_cap * sizeof(AstNode*));
     
     next_token(parser); // Move past '('
     
     if (!current_token_is(parser, TOKEN_RPAREN)) {
-        if (node->data.function_call.arg_count < MAX_FUNCTION_ARGS) {
-            node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
-        }
+        temp_args[temp_count++] = parse_expression(parser, 0);
         
         while (peek_token_is(parser, TOKEN_COMMA)) {
-            next_token(parser); // move to comma
-            next_token(parser); // move past comma
-            if (node->data.function_call.arg_count < MAX_FUNCTION_ARGS) {
-                node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
-            } else {
-                fprintf(stderr, "Parser Error: Maximum function arguments (%d) exceeded!\n", MAX_FUNCTION_ARGS);
-                break;
+            next_token(parser); 
+            next_token(parser); 
+            
+            if (temp_count >= temp_cap) {
+                temp_cap *= 2;
+                temp_args = (AstNode**)realloc(temp_args, temp_cap * sizeof(AstNode*));
             }
+            temp_args[temp_count++] = parse_expression(parser, 0);
         }
     }
     
-    if (!expect_peek(parser, TOKEN_RPAREN)) return NULL;
+    if (!expect_peek(parser, TOKEN_RPAREN)) {
+        free(temp_args);
+        return NULL;
+    }
     
+    // Move dynamically sized array perfectly into the Arena
+    if (temp_count > 0) {
+        node->data.function_call.arguments = (AstNode**)arena_alloc(parser->arena, temp_count * sizeof(AstNode*));
+        memcpy(node->data.function_call.arguments, temp_args, temp_count * sizeof(AstNode*));
+    } else {
+        node->data.function_call.arguments = NULL;
+    }
+    node->data.function_call.arg_count = temp_count;
+    
+    free(temp_args);
     return node;
 }
 
@@ -102,16 +116,14 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
     if (current_token_is(parser, TOKEN_IDENT)) {
         left_exp = parse_identifier(parser);
         
-        // If an identifier is followed by '(', it's a function call!
         if (peek_token_is(parser, TOKEN_LPAREN)) {
-            next_token(parser); // Jump onto the '('
+            next_token(parser); 
             left_exp = parse_function_call(parser, left_exp);
         }
     } else if (current_token_is(parser, TOKEN_INT)) {
         left_exp = parse_integer_literal(parser);
     }
 
-    // Recognize advanced math operators
     if (peek_token_is(parser, TOKEN_PLUS) || peek_token_is(parser, TOKEN_MINUS) ||
         peek_token_is(parser, TOKEN_ASTERISK) || peek_token_is(parser, TOKEN_SLASH) ||
         peek_token_is(parser, TOKEN_PERCENT)) {
@@ -119,6 +131,7 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
         next_token(parser);
         AstNode* infix_node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
         infix_node->type = AST_INFIX_EXPRESSION;
+        infix_node->data_type = VO_TYPE_UNKNOWN;
         infix_node->data.infix.token = parser->current_token;
         infix_node->data.infix.operator_str = parser->current_token.literal;
         infix_node->data.infix.operator_len = parser->current_token.length;
@@ -135,6 +148,7 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
 static AstNode* parse_let_statement(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_LET_STATEMENT;
+    node->data_type = VO_TYPE_UNKNOWN;
     node->data.let_stmt.token = parser->current_token;
 
     if (!expect_peek(parser, TOKEN_IDENT)) return NULL;
@@ -159,6 +173,7 @@ static AstNode* parse_let_statement(Parser* parser) {
 static AstNode* parse_return_statement(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_RETURN_STATEMENT;
+    node->data_type = VO_TYPE_UNKNOWN;
     node->data.return_stmt.token = parser->current_token;
 
     next_token(parser);
@@ -174,7 +189,8 @@ static AstNode* parse_return_statement(Parser* parser) {
 static AstNode* parse_function_statement(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_FUNCTION;
-    node->data.function_stmt.token = parser->current_token; // 'fn'
+    node->data_type = VO_TYPE_UNKNOWN;
+    node->data.function_stmt.token = parser->current_token; 
 
     if (!expect_peek(parser, TOKEN_IDENT)) return NULL;
 
@@ -185,47 +201,74 @@ static AstNode* parse_function_statement(Parser* parser) {
 
     if (!expect_peek(parser, TOKEN_LPAREN)) return NULL;
 
-    node->data.function_stmt.parameters = (Identifier**)arena_alloc(parser->arena, sizeof(Identifier*) * MAX_FUNCTION_ARGS);
-    node->data.function_stmt.param_count = 0;
+    // Dynamic Parameter Parsing
+    size_t temp_param_cap = 8;
+    size_t temp_param_count = 0;
+    Identifier** temp_params = (Identifier**)malloc(temp_param_cap * sizeof(Identifier*));
 
-    next_token(parser); // Move past '('
+    next_token(parser); 
 
     if (!current_token_is(parser, TOKEN_RPAREN)) {
         Identifier* param = (Identifier*)arena_alloc(parser->arena, sizeof(Identifier));
         param->value = parser->current_token.literal;
         param->length = parser->current_token.length;
-        if (node->data.function_stmt.param_count < MAX_FUNCTION_ARGS) {
-            node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = param;
-        }
+        temp_params[temp_param_count++] = param;
 
         while (peek_token_is(parser, TOKEN_COMMA)) {
             next_token(parser); 
             next_token(parser); 
             
+            if (temp_param_count >= temp_param_cap) {
+                temp_param_cap *= 2;
+                temp_params = (Identifier**)realloc(temp_params, temp_param_cap * sizeof(Identifier*));
+            }
+            
             Identifier* next_param = (Identifier*)arena_alloc(parser->arena, sizeof(Identifier));
             next_param->value = parser->current_token.literal;
             next_param->length = parser->current_token.length;
-            if (node->data.function_stmt.param_count < MAX_FUNCTION_ARGS) {
-                node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = next_param;
-            }
+            temp_params[temp_param_count++] = next_param;
         }
     }
 
-    if (!expect_peek(parser, TOKEN_RPAREN)) return NULL;
-    if (!expect_peek(parser, TOKEN_LBRACE)) return NULL;
+    if (!expect_peek(parser, TOKEN_RPAREN)) { free(temp_params); return NULL; }
+    if (!expect_peek(parser, TOKEN_LBRACE)) { free(temp_params); return NULL; }
 
-    node->data.function_stmt.body = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * 128);
-    node->data.function_stmt.body_count = 0;
+    if (temp_param_count > 0) {
+        node->data.function_stmt.parameters = (Identifier**)arena_alloc(parser->arena, temp_param_count * sizeof(Identifier*));
+        memcpy(node->data.function_stmt.parameters, temp_params, temp_param_count * sizeof(Identifier*));
+    } else {
+        node->data.function_stmt.parameters = NULL;
+    }
+    node->data.function_stmt.param_count = temp_param_count;
+    free(temp_params);
 
-    next_token(parser); // Move past '{'
+    // Dynamic Body Parsing
+    size_t temp_body_cap = 16;
+    size_t temp_body_count = 0;
+    AstNode** temp_body = (AstNode**)malloc(temp_body_cap * sizeof(AstNode*));
+
+    next_token(parser); 
 
     while (!current_token_is(parser, TOKEN_RBRACE) && !current_token_is(parser, TOKEN_EOF)) {
         AstNode* stmt = parse_statement(parser);
         if (stmt != NULL) {
-            node->data.function_stmt.body[node->data.function_stmt.body_count++] = stmt;
+            if (temp_body_count >= temp_body_cap) {
+                temp_body_cap *= 2;
+                temp_body = (AstNode**)realloc(temp_body, temp_body_cap * sizeof(AstNode*));
+            }
+            temp_body[temp_body_count++] = stmt;
         }
         next_token(parser);
     }
+
+    if (temp_body_count > 0) {
+        node->data.function_stmt.body = (AstNode**)arena_alloc(parser->arena, temp_body_count * sizeof(AstNode*));
+        memcpy(node->data.function_stmt.body, temp_body, temp_body_count * sizeof(AstNode*));
+    } else {
+        node->data.function_stmt.body = NULL;
+    }
+    node->data.function_stmt.body_count = temp_body_count;
+    free(temp_body);
 
     return node;
 }
