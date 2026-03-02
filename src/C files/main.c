@@ -16,76 +16,85 @@ int check_extension(const char* filename, const char* ext) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("--- %s Fast Native Compiler v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
-
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <file%s>\n", argv[0], VOLANG_EXT);
+        printf("--- %s Compiler v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
+        fprintf(stderr, "Usage: %s <file1%s> [file2%s] ...\n", argv[0], VOLANG_EXT, VOLANG_EXT);
         return 1;
     }
 
-    const char* filename = argv[1];
-
-    if (!check_extension(filename, VOLANG_EXT)) {
-        fprintf(stderr, "Error: File must have a '%s' extension.\n", VOLANG_EXT);
-        return 1;
-    }
-
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        fprintf(stderr, "Error: Could not open file %s\n", filename);
-        return 1;
-    }
-
-    fseek(file, 0, SEEK_END);
-    long fsize = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char* source_code = (char*)malloc(fsize + 1);
-    
-    // FIX: Properly handle fread return value to remove GCC warning
-    size_t read_bytes = fread(source_code, 1, fsize, file);
-    if (read_bytes != (size_t)fsize) {
-        fprintf(stderr, "Error: Failed to read the entire file.\n");
-        fclose(file);
-        free(source_code);
-        return 1;
-    }
-    fclose(file);
-    source_code[fsize] = '\0';
-
-    // 1. Lexical Analysis (Zero-Copy)
-    Lexer lexer;
-    lexer_init(&lexer, source_code, fsize);
-
-    // 2. Parser & Arena (O(1) Allocations)
+    // Initialize the global Memory Arena
     Arena arena;
-    // FIX: Increase Arena from 1MB to 16MB for 10,000+ line files (Boosts to 1M Loc/s)
-    arena_init(&arena, 16 * 1024 * 1024); 
-    
-    Parser parser;
-    parser_init(&parser, &lexer, &arena);
-    Program* program = parse_program(&parser);
-    
-    printf("[1/3] AST generated in memory.\n");
+    arena_init(&arena, 16 * 1024 * 1024); // 16MB for 1M+ LOC/s
 
-    // 3. Custom AST Optimizer (In-place Mutation)
+    // Create the master program that will hold code from ALL files
+    Program* master_program = create_program(&arena);
+
+    // Keep track of source strings so we can free them at the very end
+    char* loaded_sources[argc];
+
+    for (int i = 1; i < argc; i++) {
+        const char* filename = argv[i];
+
+        if (!check_extension(filename, VOLANG_EXT)) {
+            fprintf(stderr, "Error: File '%s' must have a '%s' extension.\n", filename, VOLANG_EXT);
+            continue; // Skip invalid files
+        }
+
+        FILE* file = fopen(filename, "rb");
+        if (!file) {
+            fprintf(stderr, "Error: Could not open file '%s'\n", filename);
+            continue;
+        }
+
+        fseek(file, 0, SEEK_END);
+        long fsize = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        char* source_code = (char*)malloc(fsize + 1);
+        size_t read_bytes = fread(source_code, 1, fsize, file);
+        if (read_bytes != (size_t)fsize) {
+            fprintf(stderr, "Warning: Failed to read entire file '%s'.\n", filename);
+        }
+        fclose(file);
+        source_code[fsize] = '\0';
+        
+        loaded_sources[i] = source_code;
+
+        // Parse the current file
+        Lexer lexer;
+        lexer_init(&lexer, source_code, fsize);
+        
+        Parser parser;
+        parser_init(&parser, &lexer, &arena);
+        
+        Program* file_program = parse_program(&parser);
+
+        // Merge the file's AST into the master AST
+        for (size_t stmt_idx = 0; stmt_idx < file_program->statement_count; stmt_idx++) {
+            program_add_statement(&arena, master_program, file_program->statements[stmt_idx]);
+        }
+    }
+    
+    printf("[1/3] Multi-file AST generated successfully.\n");
+
+    // Optimize the combined AST
     Optimizer opt;
     optimizer_init(&opt);
-    optimize_program(&opt, program);
+    optimize_program(&opt, master_program);
     
     if (opt.folded_constants > 0 || opt.eliminated_nodes > 0) {
         printf("[2/3] AST Optimized: Folded %d constants, Eliminated %d dead nodes.\n", 
                opt.folded_constants, opt.eliminated_nodes);
     } else {
-        printf("[2/3] AST Optimized: No optimizations needed.\n");
+        printf("[2/3] AST Optimized: Clean.\n");
     }
 
-    // 4. Generate Native LLVM IR
+    // Generate LLVM IR for the combined AST
     const char* output_ll = "output.ll";
     LLVMGen gen;
     llvm_gen_init(&gen, output_ll);
     
-    if (llvm_gen_program(&gen, program)) {
+    if (llvm_gen_program(&gen, master_program)) {
         printf("[3/3] Native LLVM IR compiled to: %s\n", output_ll);
     } else {
         fprintf(stderr, "Compilation failed.\n");
@@ -94,6 +103,10 @@ int main(int argc, char* argv[]) {
     // Cleanup
     llvm_gen_close(&gen);
     arena_free(&arena);
-    free(source_code);
+    
+    for (int i = 1; i < argc; i++) {
+        if (loaded_sources[i]) free(loaded_sources[i]);
+    }
+    
     return 0;
 }
