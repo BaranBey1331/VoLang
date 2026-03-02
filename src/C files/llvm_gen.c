@@ -5,9 +5,8 @@
 void llvm_gen_init(LLVMGen* gen, const char* filename) {
     gen->output_file = fopen(filename, "w");
     gen->register_counter = 1; 
-    gen->in_function = false;
-    gen->global_count = 0;
-    gen->local_count = 0;
+    gen->current_scope_depth = 0;
+    gen->scope_var_counts[0] = 0; // Initialize Global scope
     
     if (!gen->output_file) {
         fprintf(stderr, "LLVM Gen Error: Could not create output file %s\n", filename);
@@ -16,23 +15,34 @@ void llvm_gen_init(LLVMGen* gen, const char* filename) {
     
     fprintf(gen->output_file, "; ModuleID = 'VoLangCore'\n");
     fprintf(gen->output_file, "source_filename = \"volang_script\"\n\n");
-
-    // NATIVE BUILT-INS: Tell LLVM about standard C library functions
     fprintf(gen->output_file, "; --- Built-in Native Functions ---\n");
     fprintf(gen->output_file, "declare i32 @printf(ptr, ...)\n");
-    
-    // Create a global format string for printing 64-bit integers (%lld\n)
     fprintf(gen->output_file, "@.str.int = private unnamed_addr constant [6 x i8] c\"%%lld\\0A\\00\"\n\n");
 }
 
+static void enter_scope(LLVMGen* gen) {
+    if (gen->current_scope_depth < MAX_SCOPE_DEPTH - 1) {
+        gen->current_scope_depth++;
+        gen->scope_var_counts[gen->current_scope_depth] = 0;
+    }
+}
+
+static void exit_scope(LLVMGen* gen) {
+    if (gen->current_scope_depth > 0) {
+        gen->current_scope_depth--;
+    }
+}
+
+// Returns depth level. 0 = Global (@), >0 = Local (%)
 static int resolve_scope(LLVMGen* gen, const char* name, size_t len) {
-    for (int i = gen->local_count - 1; i >= 0; i--) {
-        if (gen->local_lengths[i] == len && strncmp(gen->locals[i], name, len) == 0) return 1; 
+    for (int d = gen->current_scope_depth; d >= 0; d--) {
+        for (int i = gen->scope_var_counts[d] - 1; i >= 0; i--) {
+            if (gen->scope_var_lengths[d][i] == len && strncmp(gen->scope_vars[d][i], name, len) == 0) {
+                return d; 
+            }
+        }
     }
-    for (int i = gen->global_count - 1; i >= 0; i--) {
-        if (gen->global_lengths[i] == len && strncmp(gen->globals[i], name, len) == 0) return 2;
-    }
-    return 1;
+    return 1; // Default to local if undeclared (prevents total crash, allows LLVM to throw error)
 }
 
 static int generate_expression(LLVMGen* gen, AstNode* node) {
@@ -46,8 +56,8 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
     
     if (node->type == AST_IDENTIFIER) {
         int reg = gen->register_counter++;
-        int scope = resolve_scope(gen, node->data.ident.value, node->data.ident.length);
-        char prefix = (scope == 2) ? '@' : '%';
+        int depth = resolve_scope(gen, node->data.ident.value, node->data.ident.length);
+        char prefix = (depth == 0) ? '@' : '%';
         
         fprintf(gen->output_file, "  %%%d = load i64, ptr %c%.*s\n", 
                 reg, prefix, (int)node->data.ident.length, node->data.ident.value);
@@ -62,22 +72,17 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
             arg_regs[i] = generate_expression(gen, node->data.function_call.arguments[i]);
         }
         
-        // BUILT-IN: Intercept 'print' function calls
         if (node->data.function_call.function_name->length == 5 && 
             strncmp(node->data.function_call.function_name->value, "print", 5) == 0) {
             
             int res_reg = gen->register_counter++;
-            // Call the native C printf with our format string
             fprintf(gen->output_file, "  %%%d = call i32 (ptr, ...) @printf(ptr @.str.int, i64 %%%d)\n", 
                     res_reg, arg_regs[0]);
-            
-            // Return the register (print returns the number of chars printed, but we can treat as i64)
             int cast_reg = gen->register_counter++;
             fprintf(gen->output_file, "  %%%d = sext i32 %%%d to i64\n", cast_reg, res_reg);
             return cast_reg;
         }
 
-        // Standard user-defined function call
         int res_reg = gen->register_counter++;
         fprintf(gen->output_file, "  %%%d = call i64 @%.*s(", 
                 res_reg, (int)node->data.function_call.function_name->length, node->data.function_call.function_name->value);
@@ -120,11 +125,12 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
     if (node->type == AST_LET_STATEMENT) {
         int val_reg = generate_expression(gen, node->data.let_stmt.value);
         
-        if (gen->in_function) {
-            if (gen->local_count < MAX_SCOPE_VARS) {
-                gen->locals[gen->local_count] = node->data.let_stmt.name->value;
-                gen->local_lengths[gen->local_count] = node->data.let_stmt.name->length;
-                gen->local_count++;
+        if (gen->current_scope_depth > 0) {
+            // Register local variable in current scope
+            if (gen->scope_var_counts[gen->current_scope_depth] < MAX_VARS_PER_SCOPE) {
+                size_t idx = gen->scope_var_counts[gen->current_scope_depth]++;
+                gen->scope_vars[gen->current_scope_depth][idx] = node->data.let_stmt.name->value;
+                gen->scope_var_lengths[gen->current_scope_depth][idx] = node->data.let_stmt.name->length;
             }
             
             fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
@@ -132,6 +138,7 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
             fprintf(gen->output_file, "  store i64 %%%d, ptr %%%.*s\n", 
                     val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
         } else {
+            // Global store
             fprintf(gen->output_file, "  store i64 %%%d, ptr @%.*s\n", 
                     val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
         }
@@ -146,13 +153,16 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
 }
 
 int llvm_gen_program(LLVMGen* gen, Program* program) {
+    gen->current_scope_depth = 0; // Global Scope
+
+    // Pass 0: Register global variables
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_LET_STATEMENT) {
-            if (gen->global_count < MAX_SCOPE_VARS) {
-                gen->globals[gen->global_count] = stmt->data.let_stmt.name->value;
-                gen->global_lengths[gen->global_count] = stmt->data.let_stmt.name->length;
-                gen->global_count++;
+            if (gen->scope_var_counts[0] < MAX_VARS_PER_SCOPE) {
+                size_t idx = gen->scope_var_counts[0]++;
+                gen->scope_vars[0][idx] = stmt->data.let_stmt.name->value;
+                gen->scope_var_lengths[0][idx] = stmt->data.let_stmt.name->length;
             }
             fprintf(gen->output_file, "@%.*s = common global i64 0\n", 
                     (int)stmt->data.let_stmt.name->length, stmt->data.let_stmt.name->value);
@@ -160,21 +170,21 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
     }
     fprintf(gen->output_file, "\n");
 
+    // Pass 1: Generate user-defined functions
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_FUNCTION) {
             gen->register_counter = 1; 
-            gen->in_function = true;
-            gen->local_count = 0;
+            enter_scope(gen); // Entering function body (Depth 1)
             
             fprintf(gen->output_file, "define i64 @%.*s(", 
                     (int)stmt->data.function_stmt.name->length, stmt->data.function_stmt.name->value);
             
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
-                if (gen->local_count < MAX_SCOPE_VARS) {
-                    gen->locals[gen->local_count] = stmt->data.function_stmt.parameters[p]->value;
-                    gen->local_lengths[gen->local_count] = stmt->data.function_stmt.parameters[p]->length;
-                    gen->local_count++;
+                if (gen->scope_var_counts[gen->current_scope_depth] < MAX_VARS_PER_SCOPE) {
+                    size_t idx = gen->scope_var_counts[gen->current_scope_depth]++;
+                    gen->scope_vars[gen->current_scope_depth][idx] = stmt->data.function_stmt.parameters[p]->value;
+                    gen->scope_var_lengths[gen->current_scope_depth][idx] = stmt->data.function_stmt.parameters[p]->length;
                 }
                 
                 fprintf(gen->output_file, "i64 %%arg_%.*s", 
@@ -201,24 +211,31 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
             }
             fprintf(gen->output_file, "}\n\n");
             
-            gen->in_function = false; 
+            exit_scope(gen); // Back to Global Scope
         }
     }
 
+    // Pass 2: Generate the main execution block
     gen->register_counter = 1;
-    gen->in_function = false;
-    gen->local_count = 0; 
+    enter_scope(gen); // Enter Main body (Depth 1)
     
     fprintf(gen->output_file, "define i64 @main() {\nentry:\n");
     
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
-        if (stmt->type != AST_FUNCTION) {
+        if (stmt->type != AST_FUNCTION && stmt->type != AST_LET_STATEMENT) {
             generate_statement(gen, stmt);
+        } else if (stmt->type == AST_LET_STATEMENT) {
+            // Globals were already allocated, just store values
+            int val_reg = generate_expression(gen, stmt->data.let_stmt.value);
+            fprintf(gen->output_file, "  store i64 %%%d, ptr @%.*s\n", 
+                    val_reg, (int)stmt->data.let_stmt.name->length, stmt->data.let_stmt.name->value);
         }
     }
     
     fprintf(gen->output_file, "  ret i64 0\n}\n");
+    exit_scope(gen); // Clean exit
+
     return 1;
 }
 
