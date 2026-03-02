@@ -1,0 +1,11 @@
+fn force(mass, acceleration) {
+return mass * acceleration;
+}
+​fn kinetic_energy(mass, velocity) {
+let v_squared = velocity * velocity;
+let mv2 = mass * v_squared;
+return mv2 / 2;
+}
+​fn work_done(force, distance) {
+return force * distance;
+}
