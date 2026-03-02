@@ -5,9 +5,8 @@
 #include "config.h"
 #include "lexer.h"
 #include "parser.h"
-#include "compiler.h"
+#include "codegen.h"
 
-// Helper function to check if the file has the correct VoLang extension
 int check_extension(const char* filename, const char* ext) {
     const char* dot = strrchr(filename, '.');
     if (!dot || dot == filename) return 0;
@@ -15,7 +14,7 @@ int check_extension(const char* filename, const char* ext) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("--- %s Compiler v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
+    printf("--- %s Native Compiler v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
 
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <file%s>\n", argv[0], VOLANG_EXT);
@@ -35,7 +34,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Zero-copy architecture read
+    // Fast zero-copy file read
     fseek(file, 0, SEEK_END);
     long fsize = ftell(file);
     fseek(file, 0, SEEK_SET);
@@ -45,35 +44,34 @@ int main(int argc, char* argv[]) {
     fclose(file);
     source_code[fsize] = '\0';
 
-    // 1. Lexer
+    // 1. Lexical Analysis
     Lexer lexer;
     lexer_init(&lexer, source_code, fsize);
 
-    // 2. Parser & Arena
+    // 2. Parser & Memory Arena
     Arena arena;
     arena_init(&arena, 1024 * 1024); // 1MB AST Memory
     Parser parser;
     parser_init(&parser, &lexer, &arena);
     Program* program = parse_program(&parser);
-
     printf("[1/2] AST generated successfully.\n");
 
-    // 3. Compiler (AST -> Bytecode)
-    Compiler* compiler = compiler_create();
-    if (compile_program(compiler, program)) {
-        printf("[2/2] Bytecode compiled successfully! (%d bytes)\n", compiler->bytecode.length);
-        
-        // Print generated opcodes for debugging
-        printf("\nGenerated Opcodes:\n");
-        for (int i = 0; i < compiler->bytecode.length; i++) {
-            printf("%04d | OP_CODE: %d\n", i, compiler->bytecode.instructions[i]);
-        }
+    // 3. Native C Code Generation (Backend)
+    const char* output_filename = "output.c";
+    CodeGen cg;
+    codegen_init(&cg, output_filename);
+    
+    if (codegen_program(&cg, program)) {
+        printf("[2/2] Native C code generated: %s\n", output_filename);
+        printf("\nTo compile to machine code, run:\n");
+        printf("gcc -O3 %s -o app\n", output_filename);
     } else {
-        fprintf(stderr, "Compilation failed.\n");
+        fprintf(stderr, "Code generation failed.\n");
     }
 
+    codegen_close(&cg);
+
     // Cleanup
-    compiler_free(compiler);
     arena_free(&arena);
     free(source_code);
     return 0;
