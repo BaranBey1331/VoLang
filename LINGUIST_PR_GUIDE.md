@@ -1,12 +1,15 @@
-GitHub Linguist Submission Guide for VoLang
-To officially add VoLang to GitHub's language statistics (the language bar on repositories), we must submit a Pull Request to the github-linguist/linguist repository.
-📋 Prerequisites Checklist
-GitHub has strict rules before they accept a new language:
- * [ ] Usage: VoLang must be used in at least 200 unique GitHub repositories. (We need to build a community first!)
- * [ ] TextMate Grammar: We need to create a VoLang.tmLanguage.json file that defines how to highlight VoLang syntax.
- * [ ] File Extensions: We must lock in our primary extensions (.vo, .vol).
-📝 Changes to make in the Linguist Repo
-When we open the PR to GitHub, we will need to modify their languages.yml file with this exact block:
+GitHub Linguist Submission Guide
+This document outlines the steps required to officially add VoLang to GitHub's language statistics (via the github-linguist/linguist repository).
+📋 Official Requirements
+According to the Linguist CONTRIBUTING.md, a language must meet these strict criteria before a PR can be accepted:
+ * In-the-wild Usage: VoLang must be used in hundreds of unique, non-fork repositories on GitHub.
+ * TextMate Grammar: We must provide a valid TextMate grammar (.tmLanguage.json or .cson) for syntax highlighting.
+ * Open Source License: The grammar repository and VoLang itself must have an OSI-approved license (e.g., MIT).
+📝 Steps to Submit
+Once we reach the usage threshold, we will fork github-linguist/linguist and make the following changes:
+ * Add our TextMate grammar repository as a submodule in vendor/grammars/.
+ * Update languages.yml with the following block:
+ * 
 VoLang:
   type: programming
   color: "#FF4500"
@@ -17,16 +20,5 @@ VoLang:
   ace_mode: text
   language_id: <Next_Available_ID>
 
-💬 The PR Pitch (What to write in the GitHub PR description)
-Title: Add support for VoLang
-Description:
-This PR adds support for VoLang, a highly optimized, natively compiled programming language targeting LLVM IR.
-Why VoLang deserves to be added:
-VoLang is gaining traction due to its unique compiler architecture:
- * Compilation Speed: VoLang achieves over 1,000,000 LOC/s compilation speed. It beats C++ and Rust compilers by using a Zero-Allocation Arena AST and In-Place AST mutations.
- * Execution Speed: It compiles directly to LLVM IR without intermediate C transpilation or Virtual Machines, matching the raw speed of Assembly and C.
- * Zero-Copy Lexing: The compiler entirely avoids malloc during tokenization, proving to be a modern case study in high-performance compiler design.
-It features dynamic-like syntax with strict native memory bounds, advanced compile-time constant folding, and dead-code elimination.
-Here are the search results demonstrating 200+ in-the-wild repositories using VoLang:
-[Link to GitHub search query for extension:vo]
-
+ * Add sample .vo files to the samples/VoLang/ directory in their repository.
+ * Run script/add-grammar and script/test to ensure compliance before opening the Pull Request.
