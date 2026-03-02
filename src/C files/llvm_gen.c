@@ -5,6 +5,9 @@
 void llvm_gen_init(LLVMGen* gen, const char* filename) {
     gen->output_file = fopen(filename, "w");
     gen->register_counter = 1; 
+    gen->in_function = false;
+    gen->global_count = 0;
+    gen->local_count = 0;
     
     if (!gen->output_file) {
         fprintf(stderr, "LLVM Gen Error: Could not create output file %s\n", filename);
@@ -13,6 +16,24 @@ void llvm_gen_init(LLVMGen* gen, const char* filename) {
     
     fprintf(gen->output_file, "; ModuleID = 'VoLangCore'\n");
     fprintf(gen->output_file, "source_filename = \"volang_script\"\n\n");
+}
+
+// Helper: Determine if a variable is local (%) or global (@)
+// Returns 1 for Local, 2 for Global
+static int resolve_scope(LLVMGen* gen, const char* name, size_t len) {
+    // Check locals first (allows shadowing of globals)
+    for (int i = gen->local_count - 1; i >= 0; i--) {
+        if (gen->local_lengths[i] == len && strncmp(gen->locals[i], name, len) == 0) {
+            return 1; 
+        }
+    }
+    // Check globals
+    for (int i = gen->global_count - 1; i >= 0; i--) {
+        if (gen->global_lengths[i] == len && strncmp(gen->globals[i], name, len) == 0) {
+            return 2;
+        }
+    }
+    return 1; // Default to local if unknown (fallback)
 }
 
 static int generate_expression(LLVMGen* gen, AstNode* node) {
@@ -26,14 +47,15 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
     
     if (node->type == AST_IDENTIFIER) {
         int reg = gen->register_counter++;
-        fprintf(gen->output_file, "  %%%d = load i64, ptr %%%.*s\n", 
-                reg, (int)node->data.ident.length, node->data.ident.value);
+        int scope = resolve_scope(gen, node->data.ident.value, node->data.ident.length);
+        char prefix = (scope == 2) ? '@' : '%';
+        
+        fprintf(gen->output_file, "  %%%d = load i64, ptr %c%.*s\n", 
+                reg, prefix, (int)node->data.ident.length, node->data.ident.value);
         return reg;
     }
     
     if (node->type == AST_FUNCTION_CALL) {
-        // FIX: Replaced fixed array with C99 Variable Length Array (VLA)
-        // This dynamically allocates exactly enough space on the C stack. Zero buffer overflow risk!
         size_t arg_count = node->data.function_call.arg_count;
         int arg_regs[arg_count > 0 ? arg_count : 1]; 
         
@@ -73,13 +95,25 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
     if (!node) return;
 
     if (node->type == AST_LET_STATEMENT) {
-        fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
-                (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
-        
         int val_reg = generate_expression(gen, node->data.let_stmt.value);
         
-        fprintf(gen->output_file, "  store i64 %%%d, ptr %%%.*s\n", 
-                val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
+        if (gen->in_function) {
+            // Local variable allocation
+            if (gen->local_count < MAX_SCOPE_VARS) {
+                gen->locals[gen->local_count] = node->data.let_stmt.name->value;
+                gen->local_lengths[gen->local_count] = node->data.let_stmt.name->length;
+                gen->local_count++;
+            }
+            
+            fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
+                    (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
+            fprintf(gen->output_file, "  store i64 %%%d, ptr %%%.*s\n", 
+                    val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
+        } else {
+            // Global variable assignment (allocated in Pass 0)
+            fprintf(gen->output_file, "  store i64 %%%d, ptr @%.*s\n", 
+                    val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
+        }
                 
     } else if (node->type == AST_RETURN_STATEMENT) {
         int val_reg = generate_expression(gen, node->data.return_stmt.return_value);
@@ -91,22 +125,48 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
 }
 
 int llvm_gen_program(LLVMGen* gen, Program* program) {
-    // 1. Pass 1: Generate user-defined functions
+    // Pass 0: Register all global variables
+    for (size_t i = 0; i < program->statement_count; i++) {
+        AstNode* stmt = program->statements[i];
+        if (stmt->type == AST_LET_STATEMENT) {
+            if (gen->global_count < MAX_SCOPE_VARS) {
+                gen->globals[gen->global_count] = stmt->data.let_stmt.name->value;
+                gen->global_lengths[gen->global_count] = stmt->data.let_stmt.name->length;
+                gen->global_count++;
+            }
+            // Define global variable in LLVM IR
+            fprintf(gen->output_file, "@%.*s = common global i64 0\n", 
+                    (int)stmt->data.let_stmt.name->length, stmt->data.let_stmt.name->value);
+        }
+    }
+    fprintf(gen->output_file, "\n");
+
+    // Pass 1: Generate user-defined functions
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_FUNCTION) {
             gen->register_counter = 1; 
+            gen->in_function = true;
+            gen->local_count = 0;
             
             fprintf(gen->output_file, "define i64 @%.*s(", 
                     (int)stmt->data.function_stmt.name->length, stmt->data.function_stmt.name->value);
             
+            // Register parameters as local variables
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
+                if (gen->local_count < MAX_SCOPE_VARS) {
+                    gen->locals[gen->local_count] = stmt->data.function_stmt.parameters[p]->value;
+                    gen->local_lengths[gen->local_count] = stmt->data.function_stmt.parameters[p]->length;
+                    gen->local_count++;
+                }
+                
                 fprintf(gen->output_file, "i64 %%arg_%.*s", 
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
                 if (p < stmt->data.function_stmt.param_count - 1) fprintf(gen->output_file, ", ");
             }
             fprintf(gen->output_file, ") {\nentry:\n");
             
+            // Allocate parameters on the local stack
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
                 fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
@@ -124,11 +184,16 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
                 fprintf(gen->output_file, "  ret i64 0\n");
             }
             fprintf(gen->output_file, "}\n\n");
+            
+            gen->in_function = false; // Reset state
         }
     }
 
-    // 2. Pass 2: Generate the main execution block
+    // Pass 2: Generate the main execution block
     gen->register_counter = 1;
+    gen->in_function = false;
+    gen->local_count = 0; // Clear locals for main block
+    
     fprintf(gen->output_file, "define i64 @main() {\nentry:\n");
     
     for (size_t i = 0; i < program->statement_count; i++) {
