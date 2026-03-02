@@ -1,5 +1,4 @@
 #include "lexer.h"
-#include <string.h>
 #include <stdbool.h>
 
 static void read_char(Lexer* lexer) {
@@ -20,7 +19,6 @@ static bool is_digit(char ch) {
     return ch >= '0' && ch <= '9';
 }
 
-// FIX: Highly optimized whitespace and invisible character skipper
 static void skip_whitespace(Lexer* lexer) {
     while (1) {
         char c = lexer->ch;
@@ -30,14 +28,13 @@ static void skip_whitespace(Lexer* lexer) {
             lexer->line++;
             read_char(lexer);
         } 
-        // FIX: Ignore UTF-8 Zero Width Space (\xE2\x80\x8B) which causes Lexer errors
         else if (c == (char)0xE2) {
             if (lexer->read_position + 1 < lexer->input_len &&
                 lexer->input[lexer->read_position] == (char)0x80 &&
                 lexer->input[lexer->read_position + 1] == (char)0x8B) {
-                read_char(lexer); // Skip E2
-                read_char(lexer); // Skip 80
-                read_char(lexer); // Skip 8B
+                read_char(lexer); 
+                read_char(lexer); 
+                read_char(lexer); 
             } else {
                 break;
             }
@@ -56,10 +53,18 @@ static Token new_token(TokenType type, const char* literal, size_t length, int l
     return tok;
 }
 
+// 1M LOC/s OPTIMIZATION: Replaced slow 'strncmp' with direct length-indexed character matching
 static TokenType lookup_ident(const char* ident, size_t length) {
-    if (length == 3 && strncmp(ident, "let", 3) == 0) return TOKEN_LET;
-    if (length == 2 && strncmp(ident, "fn", 2) == 0) return TOKEN_FN;
-    if (length == 6 && strncmp(ident, "return", 6) == 0) return TOKEN_RETURN;
+    if (length == 2 && ident[0] == 'f' && ident[1] == 'n') {
+        return TOKEN_FN;
+    }
+    if (length == 3 && ident[0] == 'l' && ident[1] == 'e' && ident[2] == 't') {
+        return TOKEN_LET;
+    }
+    if (length == 6 && ident[0] == 'r' && ident[1] == 'e' && ident[2] == 't' && 
+        ident[3] == 'u' && ident[4] == 'r' && ident[5] == 'n') {
+        return TOKEN_RETURN;
+    }
     return TOKEN_IDENT;
 }
 
@@ -70,7 +75,6 @@ void lexer_init(Lexer* lexer, const char* input, size_t input_len) {
     lexer->read_position = 0;
     lexer->line = 1;
     
-    // FIX: Skip UTF-8 BOM if present at the very beginning of the file
     if (input_len >= 3 && 
         (unsigned char)input[0] == 0xEF && 
         (unsigned char)input[1] == 0xBB && 
@@ -105,7 +109,7 @@ Token lexer_next_token(Lexer* lexer) {
         default:
             if (is_letter(lexer->ch)) {
                 size_t start_pos = lexer->position;
-                while (is_letter(lexer->ch)) {
+                while (is_letter(lexer->ch) || is_digit(lexer->ch)) { // Added digit support for names like 'var1'
                     read_char(lexer);
                 }
                 size_t length = lexer->position - start_pos;
