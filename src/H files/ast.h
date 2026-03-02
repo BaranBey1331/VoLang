@@ -5,6 +5,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Foundation for Strict Type Checking
+typedef enum {
+    VO_TYPE_UNKNOWN,
+    VO_TYPE_I64,   // Standard 64-bit integer
+    VO_TYPE_F64,   // Future: 64-bit float
+    VO_TYPE_BOOL,  // Future: Boolean
+    VO_TYPE_VOID   // Future: No return
+} DataType;
+
 typedef struct {
     uint8_t* memory;
     size_t capacity;
@@ -23,8 +32,8 @@ typedef enum {
     AST_IDENTIFIER,
     AST_INTEGER_LITERAL,
     AST_INFIX_EXPRESSION,
-    AST_FUNCTION,       // fn add(x, y) { ... }
-    AST_FUNCTION_CALL   // add(5, 10)
+    AST_FUNCTION,
+    AST_FUNCTION_CALL
 } AstNodeType;
 
 typedef struct AstNode AstNode;
@@ -59,9 +68,8 @@ typedef struct {
     long long value;
 } IntegerLiteral;
 
-// FIX: Added Function definition structure
 typedef struct {
-    Token token; // 'fn'
+    Token token; 
     Identifier* name;
     Identifier** parameters;
     size_t param_count;
@@ -69,7 +77,6 @@ typedef struct {
     size_t body_count;
 } FunctionStatement;
 
-// FIX: Added Function Call structure
 typedef struct {
     Token token;
     Identifier* function_name;
@@ -79,6 +86,7 @@ typedef struct {
 
 struct AstNode {
     AstNodeType type;
+    DataType data_type; // Type tracking for Semantic Analysis
     union {
         LetStatement let_stmt;
         ReturnStatement return_stmt;
