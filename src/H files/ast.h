@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* --- Arena Allocator for Ultra-Fast AST Generation --- */
 typedef struct {
     uint8_t* memory;
     size_t capacity;
@@ -16,8 +15,6 @@ void arena_init(Arena* arena, size_t size);
 void* arena_alloc(Arena* arena, size_t size);
 void arena_free(Arena* arena);
 
-
-/* --- Abstract Syntax Tree (AST) Nodes --- */
 typedef enum {
     AST_PROGRAM,
     AST_LET_STATEMENT,
@@ -25,7 +22,9 @@ typedef enum {
     AST_EXPRESSION_STATEMENT,
     AST_IDENTIFIER,
     AST_INTEGER_LITERAL,
-    AST_INFIX_EXPRESSION
+    AST_INFIX_EXPRESSION,
+    AST_FUNCTION,       // fn add(x, y) { ... }
+    AST_FUNCTION_CALL   // add(5, 10)
 } AstNodeType;
 
 typedef struct AstNode AstNode;
@@ -60,6 +59,24 @@ typedef struct {
     long long value;
 } IntegerLiteral;
 
+// FIX: Added Function definition structure
+typedef struct {
+    Token token; // 'fn'
+    Identifier* name;
+    Identifier** parameters;
+    size_t param_count;
+    AstNode** body;
+    size_t body_count;
+} FunctionStatement;
+
+// FIX: Added Function Call structure
+typedef struct {
+    Token token;
+    Identifier* function_name;
+    AstNode** arguments;
+    size_t arg_count;
+} FunctionCall;
+
 struct AstNode {
     AstNodeType type;
     union {
@@ -69,6 +86,8 @@ struct AstNode {
         IntegerLiteral int_literal;
         InfixExpression infix;
         AstNode* expression_stmt; 
+        FunctionStatement function_stmt;
+        FunctionCall function_call;
     } data;
 };
 
@@ -80,6 +99,5 @@ typedef struct {
 
 Program* create_program(Arena* arena);
 void program_add_statement(Arena* arena, Program* program, AstNode* stmt);
-void print_ast(AstNode* node, int indentation);
 
 #endif // AST_H
