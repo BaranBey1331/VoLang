@@ -1,5 +1,11 @@
 GitHub Linguist Configuration for VoLang
-​Treat .vo files as code and use Rust's syntax highlighting for now
-​*.vo linguist-language=Rust
+Mark our custom extensions to be highlighted using Rust's grammar
+*.vo linguist-language=Rust
 *.v linguist-language=Rust
 *.vol linguist-language=Rust
+*.vopp linguist-language=Rust
+FORCE GitHub to count these files in the language statistics repository percentage (%)
+*.vo linguist-detectable=true
+*.v linguist-detectable=true
+*.vol linguist-detectable=true
+*.vopp linguist-detectable=true
