@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MAX_FUNCTION_ARGS 64
+
 static void next_token(Parser* parser) {
     parser->current_token = parser->peek_token;
     parser->peek_token = lexer_next_token(parser->lexer);
@@ -20,8 +22,9 @@ static int expect_peek(Parser* parser, TokenType type) {
         next_token(parser);
         return 1;
     } else {
-        fprintf(stderr, "Syntax Error on line %d: Expected token %d, got %d\n", 
-                parser->peek_token.line, type, parser->peek_token.type);
+        fprintf(stderr, "Syntax Error on line %d: Expected token %d, got %d ('%.*s')\n", 
+                parser->peek_token.line, type, parser->peek_token.type,
+                (int)parser->peek_token.length, parser->peek_token.literal);
         return 0;
     }
 }
@@ -58,26 +61,32 @@ static AstNode* parse_integer_literal(Parser* parser) {
     return node;
 }
 
-// FIX: Added function call parsing (e.g., add(five, ten))
 static AstNode* parse_function_call(Parser* parser, AstNode* function_ident) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_FUNCTION_CALL;
     node->data.function_call.token = parser->current_token; // '('
     node->data.function_call.function_name = &function_ident->data.ident;
     
-    // Allocate space for up to 8 arguments for extreme speed (no realloc)
-    node->data.function_call.arguments = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * 8);
+    // Allocate space safely
+    node->data.function_call.arguments = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * MAX_FUNCTION_ARGS);
     node->data.function_call.arg_count = 0;
     
     next_token(parser); // Move past '('
     
     if (!current_token_is(parser, TOKEN_RPAREN)) {
-        node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
+        if (node->data.function_call.arg_count < MAX_FUNCTION_ARGS) {
+            node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
+        }
         
         while (peek_token_is(parser, TOKEN_COMMA)) {
             next_token(parser); // move to comma
             next_token(parser); // move past comma
-            node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
+            if (node->data.function_call.arg_count < MAX_FUNCTION_ARGS) {
+                node->data.function_call.arguments[node->data.function_call.arg_count++] = parse_expression(parser, 0);
+            } else {
+                fprintf(stderr, "Parser Error: Maximum function arguments (%d) exceeded!\n", MAX_FUNCTION_ARGS);
+                break;
+            }
         }
     }
     
@@ -93,8 +102,9 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
     if (current_token_is(parser, TOKEN_IDENT)) {
         left_exp = parse_identifier(parser);
         
-        // If an identifier is followed by '(', it's a function call!
+        // FIX: The critical missing next_token() that caused "Expected SEMICOLON got IDENT"
         if (peek_token_is(parser, TOKEN_LPAREN)) {
+            next_token(parser); // Jump onto the '('
             left_exp = parse_function_call(parser, left_exp);
         }
     } else if (current_token_is(parser, TOKEN_INT)) {
@@ -157,7 +167,6 @@ static AstNode* parse_return_statement(Parser* parser) {
     return node;
 }
 
-// FIX: Added 'fn' (Function) Parsing implementation
 static AstNode* parse_function_statement(Parser* parser) {
     AstNode* node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
     node->type = AST_FUNCTION;
@@ -172,8 +181,7 @@ static AstNode* parse_function_statement(Parser* parser) {
 
     if (!expect_peek(parser, TOKEN_LPAREN)) return NULL;
 
-    // Parse Parameters (Fast array allocation for up to 8 params)
-    node->data.function_stmt.parameters = (Identifier**)arena_alloc(parser->arena, sizeof(Identifier*) * 8);
+    node->data.function_stmt.parameters = (Identifier**)arena_alloc(parser->arena, sizeof(Identifier*) * MAX_FUNCTION_ARGS);
     node->data.function_stmt.param_count = 0;
 
     next_token(parser); // Move past '('
@@ -182,24 +190,27 @@ static AstNode* parse_function_statement(Parser* parser) {
         Identifier* param = (Identifier*)arena_alloc(parser->arena, sizeof(Identifier));
         param->value = parser->current_token.literal;
         param->length = parser->current_token.length;
-        node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = param;
+        if (node->data.function_stmt.param_count < MAX_FUNCTION_ARGS) {
+            node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = param;
+        }
 
         while (peek_token_is(parser, TOKEN_COMMA)) {
-            next_token(parser); // move to comma
-            next_token(parser); // move past comma
+            next_token(parser); 
+            next_token(parser); 
             
             Identifier* next_param = (Identifier*)arena_alloc(parser->arena, sizeof(Identifier));
             next_param->value = parser->current_token.literal;
             next_param->length = parser->current_token.length;
-            node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = next_param;
+            if (node->data.function_stmt.param_count < MAX_FUNCTION_ARGS) {
+                node->data.function_stmt.parameters[node->data.function_stmt.param_count++] = next_param;
+            }
         }
     }
 
     if (!expect_peek(parser, TOKEN_RPAREN)) return NULL;
     if (!expect_peek(parser, TOKEN_LBRACE)) return NULL;
 
-    // Parse Block Body
-    node->data.function_stmt.body = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * 64);
+    node->data.function_stmt.body = (AstNode**)arena_alloc(parser->arena, sizeof(AstNode*) * 128);
     node->data.function_stmt.body_count = 0;
 
     next_token(parser); // Move past '{'
@@ -224,8 +235,6 @@ static AstNode* parse_statement(Parser* parser) {
         case TOKEN_FN:
             return parse_function_statement(parser);
         default:
-            // For now, treat standalone expressions (like variable declarations without let) as null or parse them
-            // We return NULL to skip unrecognized to avoid infinite loops
             return NULL; 
     }
 }
