@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 jobs:
-  # 1. First, compile the source code
+  # 1. Compile the source code using the Unity Build Makefile
   build:
     name: Compile VoLang
     runs-on: ubuntu-latest
@@ -40,7 +40,7 @@ jobs:
       matrix:
         format: [zip, tar]
     steps:
-      - name: Checkout Code (For install script)
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Download Compiled Binary
@@ -52,6 +52,12 @@ jobs:
       - name: Set Executable Permission
         run: chmod +x build_bin/volang
 
+      - name: Sanitize Version Name
+        # Replaces spaces with hyphens to prevent shell errors during tar/zip
+        run: |
+          SAFE_VERSION=$(echo "${{ github.event.inputs.version }}" | tr ' ' '-')
+          echo "SAFE_VERSION=$SAFE_VERSION" >> $GITHUB_ENV
+
       - name: Package as ZIP
         if: matrix.format == 'zip'
         run: |
@@ -59,7 +65,7 @@ jobs:
           cp build_bin/volang release_pack/bin/
           cp install.sh release_pack/ || true
           cd release_pack
-          zip -r ../volang-${{ github.event.inputs.version }}-linux-amd64.zip *
+          zip -r "../volang-${{ env.SAFE_VERSION }}-linux-amd64.zip" *
 
       - name: Package as TAR.GZ
         if: matrix.format == 'tar'
@@ -68,7 +74,7 @@ jobs:
           cp build_bin/volang release_pack/bin/
           cp install.sh release_pack/ || true
           cd release_pack
-          tar -czvf ../volang-${{ github.event.inputs.version }}-linux-amd64.tar.gz *
+          tar -czvf "../volang-${{ env.SAFE_VERSION }}-linux-amd64.tar.gz" *
 
       - name: Upload Packaged Archive
         uses: actions/upload-artifact@v4
