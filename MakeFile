@@ -2,20 +2,22 @@
 CC = gcc
 CXX = g++
 
-# Flags (-I"src/H_files" automatically finds headers)
-CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files"
-CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H_files"
+# Flags (-I"src/H_files" and -I"optimizer" to find headers automatically)
+CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files" -I"optimizer"
+CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H_files" -I"optimizer"
 
 # Directories
 SRC_DIR = src/C_files
+OPT_DIR = optimizer
 OBJ_DIR = obj
 
 # Find all C and C++ files
-C_SRCS = $(wildcard $(SRC_DIR)/*.c)
+C_SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(OPT_DIR)/*.c)
 CXX_SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 
-# Object files corresponding to source files
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(C_SRCS)) \
+# Object files
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(filter $(SRC_DIR)/%.c, $(C_SRCS))) \
+       $(patsubst $(OPT_DIR)/%.c, $(OBJ_DIR)/%.o, $(filter $(OPT_DIR)/%.c, $(C_SRCS))) \
        $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(CXX_SRCS))
 
 TARGET = volang
@@ -23,12 +25,17 @@ TARGET = volang
 # Default rule
 all: $(TARGET)
 
-# Linking everything together (using g++ for linking if C++ is present)
+# Linking everything together
 $(TARGET): $(OBJS)
 	$(CXX) -o $@ $^
 
-# Compiling C files
+# Compiling C files from src
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compiling C files from optimizer
+$(OBJ_DIR)/%.o: $(OPT_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
