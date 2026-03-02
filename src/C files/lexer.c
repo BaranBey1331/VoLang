@@ -32,9 +32,7 @@ static void skip_whitespace(Lexer* lexer) {
             if (lexer->read_position + 1 < lexer->input_len &&
                 lexer->input[lexer->read_position] == (char)0x80 &&
                 lexer->input[lexer->read_position + 1] == (char)0x8B) {
-                read_char(lexer); 
-                read_char(lexer); 
-                read_char(lexer); 
+                read_char(lexer); read_char(lexer); read_char(lexer); 
             } else {
                 break;
             }
@@ -53,18 +51,11 @@ static Token new_token(TokenType type, const char* literal, size_t length, int l
     return tok;
 }
 
-// 1M LOC/s OPTIMIZATION: Replaced slow 'strncmp' with direct length-indexed character matching
 static TokenType lookup_ident(const char* ident, size_t length) {
-    if (length == 2 && ident[0] == 'f' && ident[1] == 'n') {
-        return TOKEN_FN;
-    }
-    if (length == 3 && ident[0] == 'l' && ident[1] == 'e' && ident[2] == 't') {
-        return TOKEN_LET;
-    }
+    if (length == 2 && ident[0] == 'f' && ident[1] == 'n') return TOKEN_FN;
+    if (length == 3 && ident[0] == 'l' && ident[1] == 'e' && ident[2] == 't') return TOKEN_LET;
     if (length == 6 && ident[0] == 'r' && ident[1] == 'e' && ident[2] == 't' && 
-        ident[3] == 'u' && ident[4] == 'r' && ident[5] == 'n') {
-        return TOKEN_RETURN;
-    }
+        ident[3] == 'u' && ident[4] == 'r' && ident[5] == 'n') return TOKEN_RETURN;
     return TOKEN_IDENT;
 }
 
@@ -75,14 +66,11 @@ void lexer_init(Lexer* lexer, const char* input, size_t input_len) {
     lexer->read_position = 0;
     lexer->line = 1;
     
-    if (input_len >= 3 && 
-        (unsigned char)input[0] == 0xEF && 
-        (unsigned char)input[1] == 0xBB && 
-        (unsigned char)input[2] == 0xBF) {
+    if (input_len >= 3 && (unsigned char)input[0] == 0xEF && 
+        (unsigned char)input[1] == 0xBB && (unsigned char)input[2] == 0xBF) {
         lexer->position = 3;
         lexer->read_position = 3;
     }
-    
     read_char(lexer);
 }
 
@@ -99,19 +87,20 @@ Token lexer_next_token(Lexer* lexer) {
         case '}': tok = new_token(TOKEN_RBRACE, &lexer->input[lexer->position], 1, lexer->line); break;
         case '+': tok = new_token(TOKEN_PLUS, &lexer->input[lexer->position], 1, lexer->line); break;
         case '-': tok = new_token(TOKEN_MINUS, &lexer->input[lexer->position], 1, lexer->line); break;
+        
+        // NEW NATIVE MATH OPERATORS
+        case '*': tok = new_token(TOKEN_ASTERISK, &lexer->input[lexer->position], 1, lexer->line); break;
+        case '/': tok = new_token(TOKEN_SLASH, &lexer->input[lexer->position], 1, lexer->line); break;
+        case '%': tok = new_token(TOKEN_PERCENT, &lexer->input[lexer->position], 1, lexer->line); break;
+        
         case ',': tok = new_token(TOKEN_COMMA, &lexer->input[lexer->position], 1, lexer->line); break;
         case '\0':
-            tok.type = TOKEN_EOF;
-            tok.literal = "";
-            tok.length = 0;
-            tok.line = lexer->line;
+            tok.type = TOKEN_EOF; tok.literal = ""; tok.length = 0; tok.line = lexer->line;
             return tok;
         default:
             if (is_letter(lexer->ch)) {
                 size_t start_pos = lexer->position;
-                while (is_letter(lexer->ch) || is_digit(lexer->ch)) { // Added digit support for names like 'var1'
-                    read_char(lexer);
-                }
+                while (is_letter(lexer->ch) || is_digit(lexer->ch)) read_char(lexer);
                 size_t length = lexer->position - start_pos;
                 tok.type = lookup_ident(&lexer->input[start_pos], length);
                 tok.literal = &lexer->input[start_pos];
@@ -120,9 +109,7 @@ Token lexer_next_token(Lexer* lexer) {
                 return tok; 
             } else if (is_digit(lexer->ch)) {
                 size_t start_pos = lexer->position;
-                while (is_digit(lexer->ch)) {
-                    read_char(lexer);
-                }
+                while (is_digit(lexer->ch)) read_char(lexer);
                 size_t length = lexer->position - start_pos;
                 tok = new_token(TOKEN_INT, &lexer->input[start_pos], length, lexer->line);
                 return tok; 
