@@ -2,45 +2,34 @@
 CC = gcc
 CXX = g++
 
-# GCC'ye "H files" klasöründe başlık dosyalarını (header) aramasını söylüyoruz (Tırnak işaretleri boşluk hatasını önler)
+# Flags (Includes directories with quotes to handle spaces safely)
 CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H files" -I"optimizer"
 CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H files" -I"optimizer"
 
-# Make sistemine "C files" klasöründeki kaynak kodlarını aramasını söylüyoruz (Ters bölü işareti boşluğu kaçırır)
-VPATH = src/C\ files optimizer
-
-# Boşluklu klasörlerdeki tüm C ve C++ dosyalarını bul (Shell komutu yardımıyla)
-C_SRCS = $(shell find "src/C files" optimizer -name '*.c' 2>/dev/null)
-CXX_SRCS = $(shell find "src/C files" -name '*.cpp' 2>/dev/null)
-
-# Make'in kafasının karışmaması için yolları silip sadece dosya isimlerini alıyoruz (main.c, lexer.c vb.)
-C_FILES = $(notdir $(C_SRCS))
-CXX_FILES = $(notdir $(CXX_SRCS))
-
-# Obje dosyalarının obj/ klasöründe oluşmasını sağlıyoruz
-OBJS = $(addprefix obj/, $(C_FILES:.c=.o) $(CXX_FILES:.cpp=.o))
-
 TARGET = volang
 
-# Varsayılan derleme komutu
+# 1. Klasörlerdeki tüm .c ve .cpp dosyalarını bul
+# 2. sed komutu ile her bir dosya yolunu zorla tırnak içine al ("src/C files/main.c" gibi)
+# Bu sayede Make ve bash boşlukları komut sanmayacak.
+C_FILES = $(shell find "src/C files" optimizer -name '*.c' 2>/dev/null | sed 's/.*/"&"/')
+CXX_FILES = $(shell find "src/C files" optimizer -name '*.cpp' 2>/dev/null | sed 's/.*/"&"/')
+
+# Default rule
 all: $(TARGET)
 
-# Tüm objeleri birbirine bağla
-$(TARGET): $(OBJS)
-	$(CXX) -o $@ $^
+$(TARGET):
+	@echo "Derleniyor: VoLang (Unity Build Modu - Maksimum Hız)..."
+	@if [ -n "$(strip $(CXX_FILES))" ]; then \
+		echo "C++ dosyaları algılandı, g++ ile derleniyor..."; \
+		$(CXX) $(CXXFLAGS) $(C_FILES) $(CXX_FILES) -o $(TARGET); \
+	else \
+		echo "Sadece C dosyaları algılandı, gcc ile derleniyor..."; \
+		$(CC) $(CFLAGS) $(C_FILES) -o $(TARGET); \
+	fi
+	@echo "Derleme Basarili!"
 
-# C dosyalarını derle ("$<" etrafındaki tırnaklar boşluklu klasör yollarını korur)
-obj/%.o: %.c
-	@mkdir -p obj
-	$(CC) $(CFLAGS) -c "$<" -o "$@"
-
-# C++ dosyalarını derle
-obj/%.o: %.cpp
-	@mkdir -p obj
-	$(CXX) $(CXXFLAGS) -c "$<" -o "$@"
-
-# Temizlik komutu
+# Temizlik
 clean:
-	rm -rf obj $(TARGET)
+	rm -f $(TARGET)
 
 .PHONY: all clean
