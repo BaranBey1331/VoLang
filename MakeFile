@@ -1,28 +1,41 @@
-# Compiler and flags
+# Compilers
 CC = gcc
-# -I"src/H_files" tells GCC where to find the .h files automatically
-CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files"
+CXX = g++
 
-# Directories (Changed to avoid spaces and non-English chars)
+# Flags (-I"src/H_files" automatically finds headers)
+CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files"
+CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H_files"
+
+# Directories
 SRC_DIR = src/C_files
 OBJ_DIR = obj
 
-# Files
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+# Find all C and C++ files
+C_SRCS = $(wildcard $(SRC_DIR)/*.c)
+CXX_SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+
+# Object files corresponding to source files
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(C_SRCS)) \
+       $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(CXX_SRCS))
+
 TARGET = volang
 
 # Default rule
 all: $(TARGET)
 
-# Linking
+# Linking everything together (using g++ for linking if C++ is present)
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CXX) -o $@ $^
 
-# Compiling
+# Compiling C files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compiling C++ files
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+	@mkdir -p $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Clean up
 clean:
