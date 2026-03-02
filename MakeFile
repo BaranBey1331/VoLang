@@ -1,0 +1,33 @@
+# Compiler and flags
+CC = gcc
+CFLAGS = -Wall -Wextra -O3 -std=c11
+
+# Directories
+SRC_DIR = src
+OBJ_DIR = obj
+
+# Files
+SRCS = $(wildcard $(SRC_DIR)/*.c)
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+TARGET = volang
+
+# Default rule
+all: $(TARGET)
+
+# Linking
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
+
+# Compiling
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean up
+clean:
+	rm -rf $(OBJ_DIR) $(TARGET)
+
+.PHONY: all clean
+
+
+
