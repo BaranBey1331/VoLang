@@ -102,7 +102,7 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
     if (current_token_is(parser, TOKEN_IDENT)) {
         left_exp = parse_identifier(parser);
         
-        // FIX: The critical missing next_token() that caused "Expected SEMICOLON got IDENT"
+        // If an identifier is followed by '(', it's a function call!
         if (peek_token_is(parser, TOKEN_LPAREN)) {
             next_token(parser); // Jump onto the '('
             left_exp = parse_function_call(parser, left_exp);
@@ -111,7 +111,11 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
         left_exp = parse_integer_literal(parser);
     }
 
-    if (peek_token_is(parser, TOKEN_PLUS) || peek_token_is(parser, TOKEN_MINUS)) {
+    // Recognize advanced math operators
+    if (peek_token_is(parser, TOKEN_PLUS) || peek_token_is(parser, TOKEN_MINUS) ||
+        peek_token_is(parser, TOKEN_ASTERISK) || peek_token_is(parser, TOKEN_SLASH) ||
+        peek_token_is(parser, TOKEN_PERCENT)) {
+        
         next_token(parser);
         AstNode* infix_node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
         infix_node->type = AST_INFIX_EXPRESSION;
