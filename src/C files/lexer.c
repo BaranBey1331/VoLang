@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-// Helper to read the next character
 static void read_char(Lexer* lexer) {
     if (lexer->read_position >= lexer->input_len) {
         lexer->ch = '\0';
@@ -13,27 +12,41 @@ static void read_char(Lexer* lexer) {
     lexer->read_position += 1;
 }
 
-// Helper to check if a character is a letter
 static bool is_letter(char ch) {
     return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
 }
 
-// Helper to check if a character is a digit
 static bool is_digit(char ch) {
     return ch >= '0' && ch <= '9';
 }
 
-// Skip spaces, tabs, and newlines
+// FIX: Highly optimized whitespace and invisible character skipper
 static void skip_whitespace(Lexer* lexer) {
-    while (lexer->ch == ' ' || lexer->ch == '\t' || lexer->ch == '\n' || lexer->ch == '\r') {
-        if (lexer->ch == '\n') {
+    while (1) {
+        char c = lexer->ch;
+        if (c == ' ' || c == '\t' || c == '\r') {
+            read_char(lexer);
+        } else if (c == '\n') {
             lexer->line++;
+            read_char(lexer);
+        } 
+        // FIX: Ignore UTF-8 Zero Width Space (\xE2\x80\x8B) which causes Lexer errors
+        else if (c == (char)0xE2) {
+            if (lexer->read_position + 1 < lexer->input_len &&
+                lexer->input[lexer->read_position] == (char)0x80 &&
+                lexer->input[lexer->read_position + 1] == (char)0x8B) {
+                read_char(lexer); // Skip E2
+                read_char(lexer); // Skip 80
+                read_char(lexer); // Skip 8B
+            } else {
+                break;
+            }
+        } else {
+            break;
         }
-        read_char(lexer);
     }
 }
 
-// Create a token
 static Token new_token(TokenType type, const char* literal, size_t length, int line) {
     Token tok;
     tok.type = type;
@@ -43,7 +56,6 @@ static Token new_token(TokenType type, const char* literal, size_t length, int l
     return tok;
 }
 
-// Check if an identifier is a keyword
 static TokenType lookup_ident(const char* ident, size_t length) {
     if (length == 3 && strncmp(ident, "let", 3) == 0) return TOKEN_LET;
     if (length == 2 && strncmp(ident, "fn", 2) == 0) return TOKEN_FN;
@@ -57,12 +69,21 @@ void lexer_init(Lexer* lexer, const char* input, size_t input_len) {
     lexer->position = 0;
     lexer->read_position = 0;
     lexer->line = 1;
+    
+    // FIX: Skip UTF-8 BOM if present at the very beginning of the file
+    if (input_len >= 3 && 
+        (unsigned char)input[0] == 0xEF && 
+        (unsigned char)input[1] == 0xBB && 
+        (unsigned char)input[2] == 0xBF) {
+        lexer->position = 3;
+        lexer->read_position = 3;
+    }
+    
     read_char(lexer);
 }
 
 Token lexer_next_token(Lexer* lexer) {
     Token tok;
-
     skip_whitespace(lexer);
 
     switch (lexer->ch) {
