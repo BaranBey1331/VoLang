@@ -1,0 +1,5 @@
+GitHub Linguist Configuration for VoLang
+​Treat .vo files as code and use Rust's syntax highlighting for now
+​*.vo linguist-language=Rust
+*.v linguist-language=Rust
+*.vol linguist-language=Rust
