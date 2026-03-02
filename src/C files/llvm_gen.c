@@ -16,6 +16,8 @@ void llvm_gen_init(LLVMGen* gen, const char* filename) {
 }
 
 static int generate_expression(LLVMGen* gen, AstNode* node) {
+    if (!node) return 0;
+
     if (node->type == AST_INTEGER_LITERAL) {
         int reg = gen->register_counter++;
         fprintf(gen->output_file, "  %%%d = add i64 0, %lld\n", reg, node->data.int_literal.value);
@@ -24,16 +26,18 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
     
     if (node->type == AST_IDENTIFIER) {
         int reg = gen->register_counter++;
-        // Load local/global variable from memory
         fprintf(gen->output_file, "  %%%d = load i64, ptr %%%.*s\n", 
                 reg, (int)node->data.ident.length, node->data.ident.value);
         return reg;
     }
     
     if (node->type == AST_FUNCTION_CALL) {
-        // Evaluate arguments
-        int arg_regs[8];
-        for (size_t i = 0; i < node->data.function_call.arg_count; i++) {
+        // FIX: Replaced fixed array with C99 Variable Length Array (VLA)
+        // This dynamically allocates exactly enough space on the C stack. Zero buffer overflow risk!
+        size_t arg_count = node->data.function_call.arg_count;
+        int arg_regs[arg_count > 0 ? arg_count : 1]; 
+        
+        for (size_t i = 0; i < arg_count; i++) {
             arg_regs[i] = generate_expression(gen, node->data.function_call.arguments[i]);
         }
         
@@ -41,9 +45,9 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
         fprintf(gen->output_file, "  %%%d = call i64 @%.*s(", 
                 res_reg, (int)node->data.function_call.function_name->length, node->data.function_call.function_name->value);
                 
-        for (size_t i = 0; i < node->data.function_call.arg_count; i++) {
+        for (size_t i = 0; i < arg_count; i++) {
             fprintf(gen->output_file, "i64 %%%d", arg_regs[i]);
-            if (i < node->data.function_call.arg_count - 1) fprintf(gen->output_file, ", ");
+            if (i < arg_count - 1) fprintf(gen->output_file, ", ");
         }
         fprintf(gen->output_file, ")\n");
         return res_reg;
@@ -87,16 +91,15 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
 }
 
 int llvm_gen_program(LLVMGen* gen, Program* program) {
-    // 1. First Pass: Generate user-defined functions (fn add(x,y) {...})
+    // 1. Pass 1: Generate user-defined functions
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_FUNCTION) {
-            gen->register_counter = 1; // Reset register counter for new function
+            gen->register_counter = 1; 
             
             fprintf(gen->output_file, "define i64 @%.*s(", 
                     (int)stmt->data.function_stmt.name->length, stmt->data.function_stmt.name->value);
             
-            // Define parameters
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
                 fprintf(gen->output_file, "i64 %%arg_%.*s", 
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
@@ -104,7 +107,6 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
             }
             fprintf(gen->output_file, ") {\nentry:\n");
             
-            // FIX: Allocate memory for parameters so 'load i64, ptr %x' works seamlessly!
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
                 fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
@@ -113,12 +115,10 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
             }
             
-            // Generate body
             for (size_t b = 0; b < stmt->data.function_stmt.body_count; b++) {
                 generate_statement(gen, stmt->data.function_stmt.body[b]);
             }
             
-            // Fallback return if user forgot
             if (stmt->data.function_stmt.body_count == 0 || 
                 stmt->data.function_stmt.body[stmt->data.function_stmt.body_count - 1]->type != AST_RETURN_STATEMENT) {
                 fprintf(gen->output_file, "  ret i64 0\n");
@@ -127,7 +127,7 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
         }
     }
 
-    // 2. Second Pass: Generate the main entry point for loose statements (let result = add(...))
+    // 2. Pass 2: Generate the main execution block
     gen->register_counter = 1;
     fprintf(gen->output_file, "define i64 @main() {\nentry:\n");
     
@@ -138,7 +138,6 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
         }
     }
     
-    // Main fallback return
     fprintf(gen->output_file, "  ret i64 0\n}\n");
     return 1;
 }
