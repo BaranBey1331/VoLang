@@ -5,23 +5,19 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#define MAX_SCOPE_VARS 1024
+#define MAX_SCOPE_DEPTH 64
+#define MAX_VARS_PER_SCOPE 256
 
 // LLVM Generator State
 typedef struct {
     FILE* output_file;
     int register_counter; 
     
-    // Fast Scope Tracking for 1M LOC/s (Zero malloc)
-    bool in_function;
-    
-    const char* globals[MAX_SCOPE_VARS];
-    size_t global_lengths[MAX_SCOPE_VARS];
-    size_t global_count;
-    
-    const char* locals[MAX_SCOPE_VARS];
-    size_t local_lengths[MAX_SCOPE_VARS];
-    size_t local_count;
+    // Multi-level Scope Tracking
+    int current_scope_depth;
+    const char* scope_vars[MAX_SCOPE_DEPTH][MAX_VARS_PER_SCOPE];
+    size_t scope_var_lengths[MAX_SCOPE_DEPTH][MAX_VARS_PER_SCOPE];
+    size_t scope_var_counts[MAX_SCOPE_DEPTH];
     
 } LLVMGen;
 
