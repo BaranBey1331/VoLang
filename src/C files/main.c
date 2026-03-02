@@ -5,7 +5,8 @@
 #include "config.h"
 #include "lexer.h"
 #include "parser.h"
-#include "codegen.h"
+#include "llvm_gen.h"
+#include "plugin.h"
 
 int check_extension(const char* filename, const char* ext) {
     const char* dot = strrchr(filename, '.');
@@ -14,7 +15,7 @@ int check_extension(const char* filename, const char* ext) {
 }
 
 int main(int argc, char* argv[]) {
-    printf("--- %s Native Compiler v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
+    printf("--- %s Native Compiler (LLVM Backend) v%s ---\n", VOLANG_NAME, VOLANG_VERSION);
 
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <file%s>\n", argv[0], VOLANG_EXT);
@@ -44,34 +45,35 @@ int main(int argc, char* argv[]) {
     fclose(file);
     source_code[fsize] = '\0';
 
-    // 1. Lexical Analysis
+    // 1. Lexical Analysis (Zero-Copy)
     Lexer lexer;
     lexer_init(&lexer, source_code, fsize);
 
-    // 2. Parser & Memory Arena
+    // 2. Parser & Memory Arena (O(1) Allocations)
     Arena arena;
     arena_init(&arena, 1024 * 1024); // 1MB AST Memory
     Parser parser;
     parser_init(&parser, &lexer, &arena);
     Program* program = parse_program(&parser);
-    printf("[1/2] AST generated successfully.\n");
-
-    // 3. Native C Code Generation (Backend)
-    const char* output_filename = "output.c";
-    CodeGen cg;
-    codegen_init(&cg, output_filename);
     
-    if (codegen_program(&cg, program)) {
-        printf("[2/2] Native C code generated: %s\n", output_filename);
-        printf("\nTo compile to machine code, run:\n");
-        printf("gcc -O3 %s -o app\n", output_filename);
+    printf("[1/2] AST generated in memory.\n");
+
+    // 3. Generate Native LLVM IR (No VM, No C Transpiler)
+    const char* output_ll = "output.ll";
+    LLVMGen gen;
+    llvm_gen_init(&gen, output_ll);
+    
+    if (llvm_gen_program(&gen, program)) {
+        printf("[2/2] Native LLVM IR compiled to: %s\n", output_ll);
+        printf("\n--- HOW TO BUILD EXECUTABLE ---\n");
+        printf("Run this command to create the final machine code:\n");
+        printf("clang %s -O3 -o my_volang_app\n", output_ll);
     } else {
-        fprintf(stderr, "Code generation failed.\n");
+        fprintf(stderr, "Compilation failed.\n");
     }
 
-    codegen_close(&cg);
-
     // Cleanup
+    llvm_gen_close(&gen);
     arena_free(&arena);
     free(source_code);
     return 0;
