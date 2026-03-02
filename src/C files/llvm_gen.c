@@ -16,24 +16,23 @@ void llvm_gen_init(LLVMGen* gen, const char* filename) {
     
     fprintf(gen->output_file, "; ModuleID = 'VoLangCore'\n");
     fprintf(gen->output_file, "source_filename = \"volang_script\"\n\n");
+
+    // NATIVE BUILT-INS: Tell LLVM about standard C library functions
+    fprintf(gen->output_file, "; --- Built-in Native Functions ---\n");
+    fprintf(gen->output_file, "declare i32 @printf(ptr, ...)\n");
+    
+    // Create a global format string for printing 64-bit integers (%lld\n)
+    fprintf(gen->output_file, "@.str.int = private unnamed_addr constant [6 x i8] c\"%%lld\\0A\\00\"\n\n");
 }
 
-// Helper: Determine if a variable is local (%) or global (@)
-// Returns 1 for Local, 2 for Global
 static int resolve_scope(LLVMGen* gen, const char* name, size_t len) {
-    // Check locals first (allows shadowing of globals)
     for (int i = gen->local_count - 1; i >= 0; i--) {
-        if (gen->local_lengths[i] == len && strncmp(gen->locals[i], name, len) == 0) {
-            return 1; 
-        }
+        if (gen->local_lengths[i] == len && strncmp(gen->locals[i], name, len) == 0) return 1; 
     }
-    // Check globals
     for (int i = gen->global_count - 1; i >= 0; i--) {
-        if (gen->global_lengths[i] == len && strncmp(gen->globals[i], name, len) == 0) {
-            return 2;
-        }
+        if (gen->global_lengths[i] == len && strncmp(gen->globals[i], name, len) == 0) return 2;
     }
-    return 1; // Default to local if unknown (fallback)
+    return 1;
 }
 
 static int generate_expression(LLVMGen* gen, AstNode* node) {
@@ -63,6 +62,22 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
             arg_regs[i] = generate_expression(gen, node->data.function_call.arguments[i]);
         }
         
+        // BUILT-IN: Intercept 'print' function calls
+        if (node->data.function_call.function_name->length == 5 && 
+            strncmp(node->data.function_call.function_name->value, "print", 5) == 0) {
+            
+            int res_reg = gen->register_counter++;
+            // Call the native C printf with our format string
+            fprintf(gen->output_file, "  %%%d = call i32 (ptr, ...) @printf(ptr @.str.int, i64 %%%d)\n", 
+                    res_reg, arg_regs[0]);
+            
+            // Return the register (print returns the number of chars printed, but we can treat as i64)
+            int cast_reg = gen->register_counter++;
+            fprintf(gen->output_file, "  %%%d = sext i32 %%%d to i64\n", cast_reg, res_reg);
+            return cast_reg;
+        }
+
+        // Standard user-defined function call
         int res_reg = gen->register_counter++;
         fprintf(gen->output_file, "  %%%d = call i64 @%.*s(", 
                 res_reg, (int)node->data.function_call.function_name->length, node->data.function_call.function_name->value);
@@ -98,7 +113,6 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
         int val_reg = generate_expression(gen, node->data.let_stmt.value);
         
         if (gen->in_function) {
-            // Local variable allocation
             if (gen->local_count < MAX_SCOPE_VARS) {
                 gen->locals[gen->local_count] = node->data.let_stmt.name->value;
                 gen->local_lengths[gen->local_count] = node->data.let_stmt.name->length;
@@ -110,7 +124,6 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
             fprintf(gen->output_file, "  store i64 %%%d, ptr %%%.*s\n", 
                     val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
         } else {
-            // Global variable assignment (allocated in Pass 0)
             fprintf(gen->output_file, "  store i64 %%%d, ptr @%.*s\n", 
                     val_reg, (int)node->data.let_stmt.name->length, node->data.let_stmt.name->value);
         }
@@ -125,7 +138,6 @@ static void generate_statement(LLVMGen* gen, AstNode* node) {
 }
 
 int llvm_gen_program(LLVMGen* gen, Program* program) {
-    // Pass 0: Register all global variables
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_LET_STATEMENT) {
@@ -134,14 +146,12 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
                 gen->global_lengths[gen->global_count] = stmt->data.let_stmt.name->length;
                 gen->global_count++;
             }
-            // Define global variable in LLVM IR
             fprintf(gen->output_file, "@%.*s = common global i64 0\n", 
                     (int)stmt->data.let_stmt.name->length, stmt->data.let_stmt.name->value);
         }
     }
     fprintf(gen->output_file, "\n");
 
-    // Pass 1: Generate user-defined functions
     for (size_t i = 0; i < program->statement_count; i++) {
         AstNode* stmt = program->statements[i];
         if (stmt->type == AST_FUNCTION) {
@@ -152,7 +162,6 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
             fprintf(gen->output_file, "define i64 @%.*s(", 
                     (int)stmt->data.function_stmt.name->length, stmt->data.function_stmt.name->value);
             
-            // Register parameters as local variables
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
                 if (gen->local_count < MAX_SCOPE_VARS) {
                     gen->locals[gen->local_count] = stmt->data.function_stmt.parameters[p]->value;
@@ -166,7 +175,6 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
             }
             fprintf(gen->output_file, ") {\nentry:\n");
             
-            // Allocate parameters on the local stack
             for (size_t p = 0; p < stmt->data.function_stmt.param_count; p++) {
                 fprintf(gen->output_file, "  %%%.*s = alloca i64\n", 
                         (int)stmt->data.function_stmt.parameters[p]->length, stmt->data.function_stmt.parameters[p]->value);
@@ -185,14 +193,13 @@ int llvm_gen_program(LLVMGen* gen, Program* program) {
             }
             fprintf(gen->output_file, "}\n\n");
             
-            gen->in_function = false; // Reset state
+            gen->in_function = false; 
         }
     }
 
-    // Pass 2: Generate the main execution block
     gen->register_counter = 1;
     gen->in_function = false;
-    gen->local_count = 0; // Clear locals for main block
+    gen->local_count = 0; 
     
     fprintf(gen->output_file, "define i64 @main() {\nentry:\n");
     
