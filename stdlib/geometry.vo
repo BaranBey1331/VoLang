@@ -1,0 +1,10 @@
+fn rectangle_area(width, height) {
+return width * height;
+}
+​fn rectangle_perimeter(width, height) {
+let sum = width + height;
+return sum * 2;
+}
+​fn cube_volume(side) {
+return side * side * side;
+}
