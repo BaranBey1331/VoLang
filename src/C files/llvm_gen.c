@@ -95,10 +95,18 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
         int right_reg = generate_expression(gen, node->data.infix.right);
         int res_reg = gen->register_counter++;
         
-        if (node->data.infix.operator_str[0] == '+') {
+        char op = node->data.infix.operator_str[0];
+        
+        if (op == '+') {
             fprintf(gen->output_file, "  %%%d = add i64 %%%d, %%%d\n", res_reg, left_reg, right_reg);
-        } else if (node->data.infix.operator_str[0] == '-') {
+        } else if (op == '-') {
             fprintf(gen->output_file, "  %%%d = sub i64 %%%d, %%%d\n", res_reg, left_reg, right_reg);
+        } else if (op == '*') {
+            fprintf(gen->output_file, "  %%%d = mul i64 %%%d, %%%d\n", res_reg, left_reg, right_reg);
+        } else if (op == '/') {
+            fprintf(gen->output_file, "  %%%d = sdiv i64 %%%d, %%%d\n", res_reg, left_reg, right_reg);
+        } else if (op == '%') {
+            fprintf(gen->output_file, "  %%%d = srem i64 %%%d, %%%d\n", res_reg, left_reg, right_reg);
         }
         return res_reg;
     }
