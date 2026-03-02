@@ -1,7 +1,9 @@
 #ifndef OPTIMIZER_H
 #define OPTIMIZER_H
 
-#include "../src/H_files/ast.h"
+// Since we added -I"src/H_files" in the Makefile, 
+// we don't need relative paths anymore. GCC will find it automatically.
+#include "ast.h"
 #include <stdbool.h>
 
 // Optimizer state and statistics
