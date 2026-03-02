@@ -2,50 +2,45 @@
 CC = gcc
 CXX = g++
 
-# Flags (-I"src/H_files" and -I"optimizer" to find headers automatically)
-CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files" -I"optimizer"
-CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H_files" -I"optimizer"
+# GCC'ye "H files" klasöründe başlık dosyalarını (header) aramasını söylüyoruz (Tırnak işaretleri boşluk hatasını önler)
+CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H files" -I"optimizer"
+CXXFLAGS = -Wall -Wextra -O3 -std=c++17 -I"src/H files" -I"optimizer"
 
-# Directories
-SRC_DIR = src/C_files
-OPT_DIR = optimizer
-OBJ_DIR = obj
+# Make sistemine "C files" klasöründeki kaynak kodlarını aramasını söylüyoruz (Ters bölü işareti boşluğu kaçırır)
+VPATH = src/C\ files optimizer
 
-# Find all C and C++ files
-C_SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(OPT_DIR)/*.c)
-CXX_SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+# Boşluklu klasörlerdeki tüm C ve C++ dosyalarını bul (Shell komutu yardımıyla)
+C_SRCS = $(shell find "src/C files" optimizer -name '*.c' 2>/dev/null)
+CXX_SRCS = $(shell find "src/C files" -name '*.cpp' 2>/dev/null)
 
-# Object files
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(filter $(SRC_DIR)/%.c, $(C_SRCS))) \
-       $(patsubst $(OPT_DIR)/%.c, $(OBJ_DIR)/%.o, $(filter $(OPT_DIR)/%.c, $(C_SRCS))) \
-       $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(CXX_SRCS))
+# Make'in kafasının karışmaması için yolları silip sadece dosya isimlerini alıyoruz (main.c, lexer.c vb.)
+C_FILES = $(notdir $(C_SRCS))
+CXX_FILES = $(notdir $(CXX_SRCS))
+
+# Obje dosyalarının obj/ klasöründe oluşmasını sağlıyoruz
+OBJS = $(addprefix obj/, $(C_FILES:.c=.o) $(CXX_FILES:.cpp=.o))
 
 TARGET = volang
 
-# Default rule
+# Varsayılan derleme komutu
 all: $(TARGET)
 
-# Linking everything together
+# Tüm objeleri birbirine bağla
 $(TARGET): $(OBJS)
 	$(CXX) -o $@ $^
 
-# Compiling C files from src
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	@mkdir -p $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# C dosyalarını derle ("$<" etrafındaki tırnaklar boşluklu klasör yollarını korur)
+obj/%.o: %.c
+	@mkdir -p obj
+	$(CC) $(CFLAGS) -c "$<" -o "$@"
 
-# Compiling C files from optimizer
-$(OBJ_DIR)/%.o: $(OPT_DIR)/%.c
-	@mkdir -p $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# C++ dosyalarını derle
+obj/%.o: %.cpp
+	@mkdir -p obj
+	$(CXX) $(CXXFLAGS) -c "$<" -o "$@"
 
-# Compiling C++ files
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(OBJ_DIR)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# Clean up
+# Temizlik komutu
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET)
+	rm -rf obj $(TARGET)
 
 .PHONY: all clean
