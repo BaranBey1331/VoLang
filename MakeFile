@@ -1,9 +1,10 @@
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -O3 -std=c11
+# -I"src/H_files" tells GCC where to find the .h files automatically
+CFLAGS = -Wall -Wextra -O3 -std=c11 -I"src/H_files"
 
-# Directories
-SRC_DIR = src
+# Directories (Changed to avoid spaces and non-English chars)
+SRC_DIR = src/C_files
 OBJ_DIR = obj
 
 # Files
@@ -28,6 +29,3 @@ clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
 
 .PHONY: all clean
-
-
-
