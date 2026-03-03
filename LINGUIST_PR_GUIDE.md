@@ -1,24 +1,20 @@
-GitHub Linguist Submission Guide
-This document outlines the steps required to officially add VoLang to GitHub's language statistics (via the github-linguist/linguist repository).
-📋 Official Requirements
-According to the Linguist CONTRIBUTING.md, a language must meet these strict criteria before a PR can be accepted:
- * In-the-wild Usage: VoLang must be used in hundreds of unique, non-fork repositories on GitHub.
- * TextMate Grammar: We must provide a valid TextMate grammar (.tmLanguage.json or .cson) for syntax highlighting.
- * Open Source License: The grammar repository and VoLang itself must have an OSI-approved license (e.g., MIT).
-📝 Steps to Submit
-Once we reach the usage threshold, we will fork github-linguist/linguist and make the following changes:
- * Add our TextMate grammar repository as a submodule in vendor/grammars/.
- * Update languages.yml with the following block:
- * 
-VoLang:
-  type: programming
-  color: "#FF4500"
-  extensions:
-    - ".vo"
-    - ".vol"
-  tm_scope: source.volang
-  ace_mode: text
-  language_id: <Next_Available_ID>
-
- * Add sample .vo files to the samples/VoLang/ directory in their repository.
- * Run script/add-grammar and script/test to ensure compliance before opening the Pull Request.
+VoLang - GitHub Linguist PR Checklist
+When we are ready to officially add VoLang to GitHub, we will copy this checklist into the Pull Request description on the github-linguist/linguist repository.
+ * [ ] I am adding a new language.
+ * [ ] The extension of the new language is used in hundreds of repositories on GitHub.com.
+   * Note: We need to ensure community adoption before submitting.
+ * [ ] Search results for each extension:
+   * To prove usage and filter out our own repository (-user:YOUR_GITHUB_NAME):
+   * .vo search: https://www.google.com/search?q=https://github.com/search%3Fq%3Dpath%253A*.vo%2Bfn%2Blet%2B-user%253AYOUR_GITHUB_NAME%26type%3Dcode
+   * .vol search: https://www.google.com/search?q=https://github.com/search%3Fq%3Dpath%253A*.vol%2Bfn%2Blet%2B-user%253AYOUR_GITHUB_NAME%26type%3Dcode
+ * [ ] I have included a real-world usage sample for all extensions added in this PR:
+   * We will add sample .vo scripts (like math.vo) into the samples/VoLang/ directory in the Linguist repo.
+ * [ ] Grammar repo:
+   * https://www.google.com/search?q=https://github.com/YOUR_GITHUB_NAME/VoLangGrammar
+   * License: MIT License
+ * [ ] I have included a syntax highlighting grammar:
+   * https://www.google.com/search?q=https://github.com/YOUR_GITHUB_NAME/VoLangGrammar/blob/main/syntaxes/volang.tmLanguage.json
+ * [ ] I have added a color:
+   * Hex value: #FF4500 (VoLang Orange/Red)
+ * [ ] I have updated the heuristics to distinguish my language from others using the same extension.
+   * Since .vo might be used by obscure 3D object files (like ancient VideoScape files), we will add a heuristic rule in heuristics.yml to identify VoLang by looking for keywords like fn , let , and print(.
