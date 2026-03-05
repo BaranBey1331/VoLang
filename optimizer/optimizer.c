@@ -37,20 +37,39 @@ static void optimize_node(Optimizer* opt, AstNode* node) {
                 long long left_val = node->data.infix.left->data.int_literal.value;
                 long long right_val = node->data.infix.right->data.int_literal.value;
                 long long result = 0;
-                
+                bool can_fold = true;
+
                 if (node->data.infix.operator_str[0] == '+') {
                     result = left_val + right_val;
                 } else if (node->data.infix.operator_str[0] == '-') {
                     result = left_val - right_val;
+                } else if (node->data.infix.operator_str[0] == '*') {
+                    result = left_val * right_val;
+                } else if (node->data.infix.operator_str[0] == '/') {
+                    if (right_val == 0) {
+                        can_fold = false;
+                    } else {
+                        result = left_val / right_val;
+                    }
+                } else if (node->data.infix.operator_str[0] == '%') {
+                    if (right_val == 0) {
+                        can_fold = false;
+                    } else {
+                        result = left_val % right_val;
+                    }
+                } else {
+                    can_fold = false;
                 }
-                
-                // IN-PLACE MUTATION: 
-                // We change this AST_INFIX_EXPRESSION node directly into an AST_INTEGER_LITERAL.
-                // This costs ZERO memory allocations. Faster than C++!
-                node->type = AST_INTEGER_LITERAL;
-                node->data.int_literal.value = result;
-                
-                opt->folded_constants++;
+
+                if (can_fold) {
+                    // IN-PLACE MUTATION:
+                    // We change this AST_INFIX_EXPRESSION node directly into an AST_INTEGER_LITERAL.
+                    // This costs ZERO memory allocations. Faster than C++!
+                    node->type = AST_INTEGER_LITERAL;
+                    node->data.int_literal.value = result;
+
+                    opt->folded_constants++;
+                }
             }
             break;
 
