@@ -74,7 +74,11 @@ static int generate_expression(LLVMGen* gen, AstNode* node) {
         
         if (node->data.function_call.function_name->length == 5 && 
             strncmp(node->data.function_call.function_name->value, "print", 5) == 0) {
-            
+            if (arg_count != 1) {
+                fprintf(stderr, "LLVM Gen Error: print expects exactly 1 argument, got %zu\n", arg_count);
+                return 0;
+            }
+
             int res_reg = gen->register_counter++;
             fprintf(gen->output_file, "  %%%d = call i32 (ptr, ...) @printf(ptr @.str.int, i64 %%%d)\n", 
                     res_reg, arg_regs[0]);

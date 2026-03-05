@@ -31,6 +31,8 @@ int main(int argc, char* argv[]) {
 
     // Keep track of source strings so we can free them at the very end
     char* loaded_sources[argc];
+    memset(loaded_sources, 0, sizeof(loaded_sources));
+    int parsed_file_count = 0;
 
     for (int i = 1; i < argc; i++) {
         const char* filename = argv[i];
@@ -59,6 +61,7 @@ int main(int argc, char* argv[]) {
         source_code[fsize] = '\0';
         
         loaded_sources[i] = source_code;
+        parsed_file_count++;
 
         // Parse the current file
         Lexer lexer;
@@ -75,7 +78,15 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    printf("[1/3] Multi-file AST generated successfully.\n");
+    if (parsed_file_count == 0) {
+        fprintf(stderr, "Error: No valid input files were parsed.\n");
+        arena_free(&arena);
+        return 1;
+    }
+
+    printf("[1/3] Multi-file AST generated successfully (%d file%s).\n",
+           parsed_file_count,
+           parsed_file_count == 1 ? "" : "s");
 
     // Optimize the combined AST
     Optimizer opt;
@@ -98,6 +109,12 @@ int main(int argc, char* argv[]) {
         printf("[3/3] Native LLVM IR compiled to: %s\n", output_ll);
     } else {
         fprintf(stderr, "Compilation failed.\n");
+        llvm_gen_close(&gen);
+        arena_free(&arena);
+        for (int i = 1; i < argc; i++) {
+            if (loaded_sources[i]) free(loaded_sources[i]);
+        }
+        return 1;
     }
 
     // Cleanup

@@ -28,6 +28,20 @@ static int expect_peek(Parser* parser, TokenType type) {
     }
 }
 
+static int token_precedence(TokenType type) {
+    switch (type) {
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+            return 10;
+        case TOKEN_ASTERISK:
+        case TOKEN_SLASH:
+        case TOKEN_PERCENT:
+            return 20;
+        default:
+            return 0;
+    }
+}
+
 void parser_init(Parser* parser, Lexer* lexer, Arena* arena) {
     parser->lexer = lexer;
     parser->arena = arena;
@@ -110,7 +124,6 @@ static AstNode* parse_function_call(Parser* parser, AstNode* function_ident) {
 }
 
 static AstNode* parse_expression(Parser* parser, int precedence) {
-    (void)precedence; 
     AstNode* left_exp = NULL;
 
     if (current_token_is(parser, TOKEN_IDENT)) {
@@ -124,10 +137,11 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
         left_exp = parse_integer_literal(parser);
     }
 
-    if (peek_token_is(parser, TOKEN_PLUS) || peek_token_is(parser, TOKEN_MINUS) ||
-        peek_token_is(parser, TOKEN_ASTERISK) || peek_token_is(parser, TOKEN_SLASH) ||
-        peek_token_is(parser, TOKEN_PERCENT)) {
-        
+    if (!left_exp) {
+        return NULL;
+    }
+
+    while (token_precedence(parser->peek_token.type) > precedence) {
         next_token(parser);
         AstNode* infix_node = (AstNode*)arena_alloc(parser->arena, sizeof(AstNode));
         infix_node->type = AST_INFIX_EXPRESSION;
@@ -136,10 +150,11 @@ static AstNode* parse_expression(Parser* parser, int precedence) {
         infix_node->data.infix.operator_str = parser->current_token.literal;
         infix_node->data.infix.operator_len = parser->current_token.length;
         infix_node->data.infix.left = left_exp;
-        
+
+        int current_precedence = token_precedence(parser->current_token.type);
         next_token(parser);
-        infix_node->data.infix.right = parse_expression(parser, 0);
-        return infix_node;
+        infix_node->data.infix.right = parse_expression(parser, current_precedence);
+        left_exp = infix_node;
     }
 
     return left_exp;
