@@ -8,7 +8,7 @@ VoLang is built with a few core architectural principles:
  * Direct LLVM Backend: Generates native .ll files for Clang/LLVM to compile into optimized machine code.
 📦 Installation
 To try out the VoLang compiler on Linux, macOS, or Termux:
-curl -sSL [https://raw.githubusercontent.com/YOUR_GITHUB_NAME/VoLang/main/install.sh](https://raw.githubusercontent.com/YOUR_GITHUB_NAME/VoLang/main/install.sh) | bash
+curl -sSL [https://raw.githubusercontent.com/BaranBey1331/VoLang/main/install.sh](https://raw.githubusercontent.com/BaranBey1331/VoLang/main/install.sh) | bash
 
 🚀 Usage
 You can compile one or multiple .vo files together.
