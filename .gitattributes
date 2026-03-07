@@ -1,10 +1,10 @@
-GitHub Linguist Configuration for VoLang
-Mark our custom extensions to be highlighted using Rust's grammar
+# GitHub Linguist Configuration for VoLang
+# Mark our custom extensions to be highlighted using Rust's grammar
 *.vo linguist-language=Rust
 *.v linguist-language=Rust
 *.vol linguist-language=Rust
 *.vopp linguist-language=Rust
-FORCE GitHub to count these files in the language statistics repository percentage (%)
+# FORCE GitHub to count these files in the language statistics repository percentage
 *.vo linguist-detectable=true
 *.v linguist-detectable=true
 *.vol linguist-detectable=true
