@@ -1,23 +1,29 @@
 fn multiply(a, b) {
 return a * b;
 }
-​fn divide(a, b) {
+
+fn divide(a, b) {
 return a / b;
 }
-​fn modulo(a, b) {
+
+fn modulo(a, b) {
 return a % b;
 }
-​fn square(x) {
+
+fn square(x) {
 return x * x;
 }
-​fn cube(x) {
+
+fn cube(x) {
 return x * x * x;
 }
-​fn average(a, b) {
+
+fn average(a, b) {
 let sum = a + b;
 return sum / 2;
 }
-​fn percent(value, total) {
+
+fn percent(value, total) {
 let part = value * 100;
 return part / total;
 }
