@@ -32,8 +32,7 @@ INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
 # 1. Fetch latest release info from GitHub API
-# NOTE: Replace 'YOUR_GITHUB_NAME' with your actual github username before pushing!
-REPO="YOUR_GITHUB_NAME/VoLang"
+REPO="BaranBey1331/VoLang"
 echo "-> Fetching latest version info..."
 LATEST_TAG=$($DOWNLOAD_CMD "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
