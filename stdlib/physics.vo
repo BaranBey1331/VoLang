@@ -1,1 +1,13 @@
-Zm4gZm9yY2UobWFzcywgYWNjZWxlcmF0aW9uKSB7CnJldHVybiBtYXNzICogYWNjZWxlcmF0aW9uOwp9CgpmbiBraW5ldGljX2VuZXJneShtYXNzLCB2ZWxvY2l0eSkgewpsZXQgdl9zcXVhcmVkID0gdmVsb2NpdHkgKiB2ZWxvY2l0eTsKbGV0IG12MiA9IG1hc3MgKiB2X3NxdWFyZWQ7CnJldHVybiBtdjIgLyAyOwp9CgpmbiB3b3JrX2RvbmUoZm9yY2UsIGRpc3RhbmNlKSB7CnJldHVybiBmb3JjZSAqIGRpc3RhbmNlOwp9Cg==
+fn force(mass, acceleration) {
+return mass * acceleration;
+}
+
+fn kinetic_energy(mass, velocity) {
+let v_squared = velocity * velocity;
+let mv2 = mass * v_squared;
+return mv2 / 2;
+}
+
+fn work_done(force, distance) {
+return force * distance;
+}
