@@ -1,12 +1,1 @@
-fn rectangle_area(width, height) {
-return width * height;
-}
-
-fn rectangle_perimeter(width, height) {
-let sum = width + height;
-return sum * 2;
-}
-
-fn cube_volume(side) {
-return side * side * side;
-}
+Zm4gcmVjdGFuZ2xlX2FyZWEod2lkdGgsIGhlaWdodCkgewpyZXR1cm4gd2lkdGggKiBoZWlnaHQ7Cn0KCmZuIHJlY3RhbmdsZV9wZXJpbWV0ZXIod2lkdGgsIGhlaWdodCkgewpsZXQgc3VtID0gd2lkdGggKyBoZWlnaHQ7CnJldHVybiBzdW0gKiAyOwp9CgpmbiBjdWJlX3ZvbHVtZShzaWRlKSB7CnJldHVybiBzaWRlICogc2lkZSAqIHNpZGU7Cn0K
